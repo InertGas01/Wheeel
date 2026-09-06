@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#f7f2e8">
+<meta name="description" content="帶有剩餘數量概念的機率轉盤，抽中會消耗庫存，庫存耗盡可自動退出轉盤。">
+<title>庫存轉盤</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23d9411e'/%3E%3Cpath d='M16 2a14 14 0 0 1 12.1 7L16 16z' fill='%23f2a541'/%3E%3Cpath d='M16 30A14 14 0 0 1 3.9 9L16 16z' fill='%232e7d6b'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23fffdf7'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<div class="app">
+
+  <header class="masthead">
+    <div class="masthead__row">
+      <h1 class="masthead__title">庫存轉盤</h1>
+      <p class="masthead__sub">機率 × 剩餘數量</p>
+    </div>
+    <p class="masthead__note">權重決定機率，數量決定還能中幾次。兩者互不影響。</p>
+  </header>
+
+  <main class="layout">
+
+    <!-- ── 轉盤 ───────────────────────────────────────────── -->
+    <section class="col col--wheel" aria-labelledby="h-wheel">
+      <h2 id="h-wheel" class="sr-only">轉盤</h2>
+
+      <div class="stage" id="stage">
+        <span class="stage__pointer" aria-hidden="true"></span>
+        <canvas id="wheel" role="img" aria-label="抽獎轉盤"></canvas>
+        <button type="button" id="spin" class="hub" aria-label="轉動轉盤" aria-describedby="emptyHint">
+          <span class="hub__label">轉</span>
+        </button>
+        <p class="stage__empty" id="emptyHint" hidden>目前沒有可抽的選項</p>
+      </div>
+
+      <p class="status" id="status" role="status" aria-live="polite">按下中央的「轉」開始抽獎</p>
+
+      <div class="controls">
+        <label class="switch">
+          <input type="checkbox" id="deduct" checked>
+          <span class="switch__box" aria-hidden="true"></span>
+          <span class="switch__text">抽中後扣 1</span>
+        </label>
+
+        <div class="controls__buttons">
+          <button type="button" class="btn" id="resetQty">重設數量</button>
+          <button type="button" class="btn" id="loadDefaults">回到預設清單</button>
+          <button type="button" class="btn btn--danger" id="clearAll">全部清空</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 選項與紀錄 ─────────────────────────────────────── -->
+    <section class="col col--side">
+
+      <section class="card" aria-labelledby="h-options">
+        <div class="card__head">
+          <h2 id="h-options" class="card__title">選項清單</h2>
+          <p class="card__meta" id="optionsMeta">—</p>
+        </div>
+
+        <div class="rows" id="rows">
+          <div class="rows__head" aria-hidden="true">
+            <span class="c-color"></span>
+            <span class="c-name">名稱</span>
+            <span class="c-weight">權重</span>
+            <span class="c-qty">數量</span>
+            <span class="c-pct">機率</span>
+            <span class="c-zero">歸零退出</span>
+            <span class="c-del"></span>
+          </div>
+          <ul class="rows__body" id="rowsBody" role="list"></ul>
+          <p class="rows__empty" id="rowsEmpty" hidden>清單是空的，用下面的欄位新增選項。</p>
+        </div>
+
+        <form class="add" id="addForm" novalidate>
+          <div class="add__grid">
+            <label class="field field--grow">
+              <span class="field__tag">名稱</span>
+              <input type="text" id="addName" maxlength="60" placeholder="例如：頭獎" autocomplete="off" aria-describedby="addError">
+            </label>
+            <label class="field">
+              <span class="field__tag">權重</span>
+              <input type="number" id="addWeight" value="1" min="0.01" step="0.01" inputmode="decimal">
+            </label>
+            <label class="field">
+              <span class="field__tag">數量</span>
+              <input type="number" id="addQty" value="1" min="0" step="1" inputmode="numeric">
+            </label>
+            <button type="submit" class="btn btn--primary">新增</button>
+          </div>
+          <p class="add__error" id="addError" role="alert" hidden>請先輸入名稱</p>
+        </form>
+
+        <details class="batch">
+          <summary class="batch__summary">批次貼上</summary>
+          <div class="batch__body">
+            <p class="batch__hint">一行一筆，格式為 <code>名稱, 權重, 數量</code>。權重與數量可省略，預設都是 1。分隔符可用半形逗號、Tab 或頓號。</p>
+            <label class="sr-only" for="batchText">批次輸入內容</label>
+            <textarea id="batchText" rows="5" spellcheck="false" placeholder="星巴克券, 2, 3&#10;電影票、1、5&#10;銘謝惠顧"></textarea>
+            <div class="batch__actions">
+              <button type="button" class="btn btn--primary" id="batchAdd">加入清單</button>
+              <button type="button" class="btn" id="batchClear">清除輸入</button>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <section class="card" aria-labelledby="h-history">
+        <div class="card__head">
+          <h2 id="h-history" class="card__title">抽獎紀錄</h2>
+          <button type="button" class="btn btn--ghost" id="clearHistory">清除紀錄</button>
+        </div>
+        <ol class="history" id="history" role="list" tabindex="0" aria-label="抽獎紀錄列表"></ol>
+        <p class="history__empty" id="historyEmpty">還沒有紀錄。</p>
+      </section>
+
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>資料只存在這台裝置的瀏覽器裡。</p>
+  </footer>
+</div>
+
+<div id="modalRoot"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
