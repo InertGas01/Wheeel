@@ -17,8 +17,8 @@
   var MAX_NAME = 60;
   var MIN_WEIGHT = 0.01;
 
-  var SPIN_TURNS = 6;
-  var SPIN_MS = 4600;
+  var SPIN_TURNS = 10;
+  var SPIN_MS = 8000;
   var REDUCED_TURNS = 0;
   var REDUCED_MS = 300;
 
@@ -139,10 +139,56 @@
     return t;
   }
 
+  /* 同名群組：名稱相同的選項共用一份庫存（qty / qty0）、顏色與「歸零退出」。
+     權重仍各自獨立，所以同一個名稱可以重複貼上佔住多個扇形放大版面比例，
+     但整組只有一份存貨，抽中其中任何一個扇形都只扣 1。 */
+
+  var SHARED = ['qty', 'qty0', 'removeAtZero', 'color'];
+
+  function groupKey(o) { return o.name.trim(); }
+
+  function copyShared(from, to) {
+    for (var i = 0; i < SHARED.length; i++) to[SHARED[i]] = from[SHARED[i]];
+  }
+
+  // 把 src 的共用欄位推給同名的其他選項
+  function shareFrom(src) {
+    var key = groupKey(src);
+    for (var i = 0; i < state.options.length; i++) {
+      var o = state.options[i];
+      if (o !== src && groupKey(o) === key) copyShared(src, o);
+    }
+  }
+
+  // 併入既有的同名群組：庫存、顏色與歸零退出改採該群組現有的值
+  function joinGroup(o) {
+    var key = groupKey(o);
+    for (var i = 0; i < state.options.length; i++) {
+      var other = state.options[i];
+      if (other !== o && groupKey(other) === key) { copyShared(other, o); return true; }
+    }
+    return false;
+  }
+
+  // 舊資料可能存著同名卻不同庫存的列，一律以群組中的第一筆為準
+  function normalizeGroups(list) {
+    var head = Object.create(null);
+    for (var i = 0; i < list.length; i++) {
+      var key = list[i].name.trim();
+      if (head[key] === undefined) head[key] = list[i];
+      else copyShared(head[key], list[i]);
+    }
+  }
+
+  // 配色以名稱為單位計數，重複貼上同一個名稱不會把調色盤算歪
   function nextColor() {
-    var used = {};
+    var used = Object.create(null);
+    var seen = Object.create(null);
     var i;
     for (i = 0; i < state.options.length; i++) {
+      var key = groupKey(state.options[i]);
+      if (seen[key]) continue;
+      seen[key] = true;
       var c = state.options[i].color;
       used[c] = (used[c] || 0) + 1;
     }
@@ -232,6 +278,8 @@
       });
     }
 
+    normalizeGroups(out.options);
+
     if (Array.isArray(data.history)) {
       for (i = 0; i < data.history.length && out.history.length < MAX_HISTORY; i++) {
         var h = data.history[i];
@@ -270,6 +318,7 @@
   var addQty = $('addQty');
   var addError = $('addError');
   var batchText = $('batchText');
+  var exportBtn = $('exportList');
   var modalRoot = $('modalRoot');
   var app = document.querySelector('.app');
 
@@ -364,11 +413,19 @@
 
     color.addEventListener('input', function () {
       o.color = normHex(color.value) || o.color;
+      shareFrom(o);
       refresh();
     });
 
     name.addEventListener('input', function () {
       o.name = clampName(name.value);
+      refresh();
+    });
+    /* 改名要等離開欄位才決定群組。若每敲一個字就併組，打「頭獎」的途中
+       會先撞上既有的「頭」再撞上「頭獎」，這一列原本的庫存就被洗掉了。 */
+    name.addEventListener('change', function () {
+      o.name = clampName(name.value);
+      joinGroup(o);
       refresh();
     });
 
@@ -383,6 +440,7 @@
     qty.addEventListener('input', function () {
       o.qty = clampQty(qty.value);
       o.qty0 = o.qty;
+      shareFrom(o);
       refresh();
     });
     qty.addEventListener('change', function () {
@@ -391,6 +449,7 @@
 
     zero.addEventListener('change', function () {
       o.removeAtZero = zero.checked;
+      shareFrom(o);
       refresh();
     });
 
@@ -501,6 +560,7 @@
     canvas.setAttribute('aria-label', describeWheel());
     deductBox.checked = state.deduct;
     resetQtyBtn.disabled = state.options.length === 0;
+    exportBtn.disabled = state.options.length === 0;
     loadDefaultsBtn.disabled = spinning;
     clearAllBtn.disabled = state.options.length === 0 && state.history.length === 0;
     clearHistoryBtn.disabled = state.history.length === 0;
@@ -707,6 +767,8 @@
       box.setAttribute('aria-modal', 'true');
       box.setAttribute('aria-labelledby', titleId);
 
+      if (cfg.cls) box.className += ' ' + cfg.cls;
+
       var title = el('p', 'modal__title');
       title.id = titleId;
       title.textContent = cfg.title;
@@ -730,7 +792,12 @@
         b.type = 'button';
         b.textContent = a.label;
         b.disabled = a.disabled === true;
-        b.addEventListener('click', function () { close(a.value); });
+        // keepOpen 的按鈕（複製／下載）按完要留在對話框裡，才能連按第二次
+        if (a.keepOpen) {
+          b.addEventListener('click', function () { if (a.onClick) a.onClick(b); });
+        } else {
+          b.addEventListener('click', function () { close(a.value); });
+        }
         acts.appendChild(b);
         if (!b.disabled && cfg.focus !== undefined && cfg.focus === a.value) focusTarget = b;
       });
@@ -756,7 +823,8 @@
       function onKey(e) {
         if (e.key === 'Escape') { e.preventDefault(); close(cfg.escapeValue); return; }
         if (e.key !== 'Tab') return;
-        var f = box.querySelectorAll('button:not([disabled])');
+        var f = box.querySelectorAll(
+          'button:not([disabled]), textarea:not([disabled]), input:not([disabled])');
         if (!f.length) return;
         var first = f[0];
         var last = f[f.length - 1];
@@ -790,6 +858,138 @@
       ]
     });
   }
+
+  /* ── 匯出清單 ────────────────────────────────── */
+
+  // 與批次貼上同一個格式：名稱, 權重, 數量。貼回批次貼上即可還原清單。
+  function exportText() {
+    var lines = [];
+    for (var i = 0; i < state.options.length; i++) {
+      var o = state.options[i];
+      lines.push(displayName(o) + ', ' + o.weight + ', ' + o.qty);
+    }
+    return lines.join('\n');
+  }
+
+  function exportFileName() {
+    var d = new Date();
+    function p(n) { return (n < 10 ? '0' : '') + n; }
+    return 'wheel-list-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) +
+           '-' + p(d.getHours()) + p(d.getMinutes()) + '.txt';
+  }
+
+  /* 退路：選取畫面上那塊 textarea 再 execCommand。
+     navigator.clipboard 在非安全來源或 sandbox iframe 會缺席或直接被拒，
+     少了這條退路「複製」就只是沒反應。而且 execCommand 回報成功不代表
+     真的寫進剪貼簿（沙箱會靜默丟掉），所以退路一律留著選取狀態，
+     即使兩條都失效，使用者也能直接自己複製。 */
+  function selectCopy(node) {
+    try {
+      node.focus();
+      node.select();
+      node.setSelectionRange(0, node.value.length);
+      return document.execCommand('copy') === true;
+    } catch (e) { return false; }
+  }
+
+  function copyText(text, node) {
+    return new Promise(function (resolve) {
+      try {
+        if (window.navigator && navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(
+            function () { resolve(true); },
+            function () { resolve(selectCopy(node)); }
+          );
+          return;
+        }
+      } catch (e) { /* 落到退路 */ }
+      resolve(selectCopy(node));
+    });
+  }
+
+  function downloadText(text, filename) {
+    var url;
+    try {
+      url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+    } catch (e) { return false; }
+    try {
+      var a = el('a');
+      a.href = url;
+      a.download = filename;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      if (a.parentNode) a.parentNode.removeChild(a);
+    } catch (e) {
+      try { URL.revokeObjectURL(url); } catch (e2) { /* 已釋放 */ }
+      return false;
+    }
+    // 立刻 revoke 會讓部分瀏覽器的下載中斷，延後釋放
+    window.setTimeout(function () {
+      try { URL.revokeObjectURL(url); } catch (e) { /* 已釋放 */ }
+    }, 60000);
+    return true;
+  }
+
+  function openExport() {
+    if (!state.options.length) return;
+
+    var text = exportText();
+    var frag = document.createDocumentFragment();
+    var timer = 0;
+    var closed = false;
+
+    var ta = document.createElement('textarea');
+    ta.className = 'export__text';
+    ta.readOnly = true;
+    ta.spellcheck = false;
+    ta.rows = Math.max(4, Math.min(12, state.options.length));
+    ta.value = text;
+    ta.setAttribute('aria-label', '清單內容');
+    frag.appendChild(ta);
+
+    var note = el('p', 'export__note');
+    note.setAttribute('role', 'status');
+    note.setAttribute('aria-live', 'polite');
+    frag.appendChild(note);
+
+    function flash(msg) {
+      // 對話框可能在 clipboard 的 Promise resolve 之前就被關掉了
+      if (closed) return;
+      note.textContent = msg;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(function () { note.textContent = ''; }, 2400);
+    }
+
+    openModal({
+      title: '匯出清單',
+      cls: 'modal--wide',
+      content: frag,
+      escapeValue: 'close',
+      focus: 'copy',
+      actions: [
+        { label: '關閉', value: 'close' },
+        {
+          label: '下載為 TXT', value: 'download', keepOpen: true,
+          onClick: function () {
+            flash(downloadText(text, exportFileName())
+              ? '已開始下載'
+              : '這個瀏覽器擋下了下載，請改用複製');
+          }
+        },
+        {
+          label: '複製', value: 'copy', primary: true, keepOpen: true,
+          onClick: function () {
+            copyText(text, ta).then(function (ok) {
+              flash(ok ? '已複製' : '已選取文字，請自行複製');
+            });
+          }
+        }
+      ]
+    }).then(function () { closed = true; window.clearTimeout(timer); });
+  }
+
+  /* ── 結果 ───────────────────────────────────── */
 
   // 結果對話框只顯示中獎名稱，不出現任何庫存說明
   function showResult(o) {
@@ -899,7 +1099,10 @@
       return;
     }
 
-    if (state.deduct) o.qty = Math.max(0, o.qty - 1);
+    if (state.deduct) {
+      o.qty = Math.max(0, o.qty - 1);
+      shareFrom(o);   // 同名共用同一份庫存，整組一起扣
+    }
 
     state.history.unshift({ name: displayName(o), t: Date.now() });
     if (state.history.length > MAX_HISTORY) state.history.length = MAX_HISTORY;
@@ -926,7 +1129,9 @@
     addName.parentNode.classList.remove('is-invalid');
 
     var at = state.options.length;
-    state.options.push(makeOption(name, addWeight.value, addQty.value, true));
+    var made = makeOption(name, addWeight.value, addQty.value, true);
+    state.options.push(made);
+    joinGroup(made);
     appendRows(at);
 
     addName.value = '';
@@ -948,7 +1153,9 @@
       if (!name) continue;
       var w = parts.length > 1 && String(parts[1]).trim() !== '' ? parts[1] : 1;
       var q = parts.length > 2 && String(parts[2]).trim() !== '' ? parts[2] : 1;
-      state.options.push(makeOption(name, w, q, true));
+      var made = makeOption(name, w, q, true);
+      state.options.push(made);
+      joinGroup(made);   // 同一批次裡的同名列也會併成一組
       added += 1;
     }
     if (!added) return;
@@ -1011,6 +1218,8 @@
       addName.removeAttribute('aria-invalid');
       addName.parentNode.classList.remove('is-invalid');
     });
+
+    exportBtn.addEventListener('click', openExport);
 
     $('batchAdd').addEventListener('click', addBatch);
     $('batchClear').addEventListener('click', function () {

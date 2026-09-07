@@ -362,10 +362,19 @@ body::before {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px 12px;
+  flex-wrap: wrap;
   padding: 13px 16px;
   border-bottom: 1.5px solid var(--ink);
   background: var(--paper-3);
+}
+
+.card__head-end {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px 10px;
 }
 
 .card__title {
@@ -721,6 +730,32 @@ body::before {
   gap: 8px;
   margin-top: 20px;
   flex-wrap: wrap;
+}
+
+/* 匯出的清單比確認訊息長，給它多一點寬度 */
+.modal--wide { width: min(560px, 100%); }
+
+.export__text {
+  width: 100%;
+  margin-top: 2px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--field-line);
+  border-radius: var(--r-md);
+  background: var(--paper-3);
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  resize: vertical;
+}
+.export__text:focus { border-color: var(--ink); }
+
+/* 保留高度，複製回饋出現與消失時按鈕不會上下跳 */
+.export__note {
+  margin: 8px 0 0;
+  min-height: 1.5em;
+  font-size: 13px;
+  color: var(--ink-2);
 }
 
 body.has-modal { overflow: hidden; }
