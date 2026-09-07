@@ -894,7 +894,7 @@
     // 「全部清空」「回到預設清單」或刪除可能在動畫途中把中獎者移出清單，
     // 這時不能扣數量、不能補紀錄，也不該跳出已經不存在的獎項。
     if (state.options.indexOf(o) < 0) {
-      setStatus('按下中央的「轉」開始抽獎', true);
+      setStatus('', true);
       refresh();
       return;
     }
@@ -990,7 +990,7 @@
           if (ok !== true) return;
           state.options = [];
           state.history = [];
-          setStatus('按下中央的「轉」開始抽獎', true);
+          setStatus('', true);
           renderAll();
           handOffFocus(clearAllBtn, loadDefaultsBtn, addName);
         });
@@ -1032,7 +1032,7 @@
     } else {
       state = { options: defaultOptions(), history: [], deduct: true };
     }
-    setStatus('按下中央的「轉」開始抽獎', true);
+    setStatus('', true);
     bind();
     renderList();
     fitCanvas();
