@@ -17,9 +17,7 @@
   <header class="masthead">
     <div class="masthead__row">
       <h1 class="masthead__title">庫存轉盤</h1>
-      <p class="masthead__sub">機率 × 剩餘數量</p>
     </div>
-    <p class="masthead__note">權重決定機率，數量決定還能中幾次。兩者互不影響。</p>
   </header>
 
   <main class="layout">
@@ -37,7 +35,7 @@
         <p class="stage__empty" id="emptyHint" hidden>目前沒有可抽的選項</p>
       </div>
 
-      <p class="status" id="status" role="status" aria-live="polite">按下中央的「轉」開始抽獎</p>
+      <p class="status" id="status" role="status" aria-live="polite"></p>
 
       <div class="controls">
         <label class="switch">
@@ -74,7 +72,7 @@
             <span class="c-del"></span>
           </div>
           <ul class="rows__body" id="rowsBody" role="list"></ul>
-          <p class="rows__empty" id="rowsEmpty" hidden>清單是空的，用下面的欄位新增選項。</p>
+          <p class="rows__empty" id="rowsEmpty" hidden>清單是空的。</p>
         </div>
 
         <form class="add" id="addForm" novalidate>
@@ -122,9 +120,6 @@
     </section>
   </main>
 
-  <footer class="foot">
-    <p>資料只存在這台裝置的瀏覽器裡。</p>
-  </footer>
 </div>
 
 <div id="modalRoot"></div>
