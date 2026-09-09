@@ -22,6 +22,8 @@
   var REDUCED_TURNS = 0;
   var REDUCED_MS = 300;
 
+  var RESULT_AUTO_CLOSE_MS = 5000;   // 結果對話框自動關閉時間
+
   var INK = '#191512';
   var PAPER = '#fffdf7';
   var RULE = '#c8bba5';
@@ -762,6 +764,7 @@
       var titleId = 'modal-title-' + uid();
       var done = false;
       var focusTarget = null;
+      var autoId = 0;
 
       box.setAttribute('role', 'dialog');
       box.setAttribute('aria-modal', 'true');
@@ -807,6 +810,7 @@
       function close(value) {
         if (done) return;
         done = true;
+        if (autoId) { window.clearTimeout(autoId); autoId = 0; }
         document.removeEventListener('keydown', onKey, true);
         if (back.parentNode) back.parentNode.removeChild(back);
         if (app && !document.querySelector('.modal-backdrop')) {
@@ -844,6 +848,11 @@
 
       var f0 = focusTarget || box.querySelector('button:not([disabled])');
       if (f0) f0.focus();
+
+      // 指定 autoCloseMs 時到時自動收掉，使用者先按按鈕的話 close() 會清掉計時器
+      if (cfg.autoCloseMs > 0) {
+        autoId = window.setTimeout(function () { close(cfg.autoCloseValue); }, cfg.autoCloseMs);
+      }
     });
   }
 
@@ -1006,6 +1015,8 @@
       content: frag,
       escapeValue: 'close',
       focus: 'close',
+      autoCloseMs: RESULT_AUTO_CLOSE_MS,
+      autoCloseValue: 'close',
       actions: [
         { label: '關閉', value: 'close' },
         { label: '再轉一次', value: 'again', primary: true, disabled: activeOptions().length === 0 }
